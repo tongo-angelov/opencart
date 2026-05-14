@@ -383,6 +383,31 @@ class Order extends \Opencart\System\Engine\Controller {
 			$output['error']['product'] = $this->language->get('error_product');
 		}
 
+		// Order
+		$this->load->model('checkout/order');
+
+		$order_data = [];
+		$order_data['products'] = [];
+
+		if (isset($post_info['order_id'])) {
+			$order_id = (int)$post_info['order_id'];
+		} else {
+			$order_id = 0;
+		}
+
+		if ($order_id) {
+			// get order products
+			$products = $this->model_checkout_order->getProducts($order_id);
+			foreach($products as $product){
+				$product_options = $this->model_checkout_order->getOptions($order_id, $product['order_product_id']);
+				$product['option'] = $product_options;
+				$order_data['products'][] = $product;
+			}
+			// restock products
+			$this->model_checkout_order->restockProducts($order_id);
+		}
+
+
 		// 3. Validate cart has products and has stock
 		if ((!$this->cart->hasStock() && !$this->config->get('config_stock_checkout')) || !$this->cart->hasMinimum()) {
 			$output['error']['product'] = $this->language->get('error_stock');
@@ -435,8 +460,6 @@ class Order extends \Opencart\System\Engine\Controller {
 		}
 
 		if (!$output) {
-			$order_data = [];
-
 			// Store Details
 			$order_data['invoice_prefix'] = $this->config->get('config_invoice_prefix');
 			$order_data['subscription_id'] = 0;
@@ -625,15 +648,6 @@ class Order extends \Opencart\System\Engine\Controller {
 				$order_data['accept_language'] = '';
 			}
 
-			if (isset($post_info['order_id'])) {
-				$order_id = (int)$post_info['order_id'];
-			} else {
-				$order_id = 0;
-			}
-
-			// Order
-			$this->load->model('checkout/order');
-
 			if (!$order_id) {
 				$order_id = $this->model_checkout_order->addOrder($order_data);
 			} else {
@@ -646,15 +660,6 @@ class Order extends \Opencart\System\Engine\Controller {
 
 			$output['order_id'] = $order_id;
 
-			// Set the order history
-			if (isset($post_info['order_status_id'])) {
-				$order_status_id = (int)$post_info['order_status_id'];
-			} else {
-				$order_status_id = (int)$this->config->get('config_order_status_id');
-			}
-
-			$this->model_checkout_order->addHistory($order_id, $order_status_id);
-
 			$output['success'] = $this->language->get('text_success');
 
 			$output['points'] = $points;
@@ -662,7 +667,26 @@ class Order extends \Opencart\System\Engine\Controller {
 			if (!empty($order_data['affiliate_id'])) {
 				$output['commission'] = $this->currency->format($order_data['commission'], $this->config->get('config_currency'));
 			}
+		} else {
+			// restore previous products
+			$order_info = $this->model_checkout_order->getOrder($order_id);
+
+			if ($order_info) {
+				$this->model_checkout_order->editOrder($order_id, $order_data);
+			}
 		}
+
+		// If I do not keep status on error, it sets it to voided, and keeps restocking since
+		// on $output/error I call editOrder with previous data, that calls addHistory with voided status
+
+		// Set the order history
+		if (isset($post_info['order_status_id'])) {
+			$order_status_id = (int)$post_info['order_status_id'];
+		} else {
+			$order_status_id = (int)$this->config->get('config_order_status_id');
+		}
+
+		$this->model_checkout_order->addHistory($order_id, $order_status_id);
 
 		$output['products'] = $this->load->controller('api/cart.getProducts');
 		$output['totals'] = $this->load->controller('api/cart.getTotals');

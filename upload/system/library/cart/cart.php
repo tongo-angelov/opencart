@@ -73,7 +73,7 @@ class Cart {
 	 * $cart = $this->cart->getProducts();
 	 */
 	public function getProducts(): array {
-		if (!$this->data) {
+		// if (!$this->data) {
 			$cart_query = $this->db->query("SELECT * FROM `" . DB_PREFIX . "cart` WHERE `store_id` = '" . (int)$this->config->get('config_store_id') . "' AND `customer_id` = '" . (int)$this->customer->getId() . "' AND `session_id` = '" . $this->db->escape($this->session->getId()) . "'");
 
 			foreach ($cart_query->rows as $cart) {
@@ -297,7 +297,7 @@ class Cart {
 					$this->remove($cart['cart_id']);
 				}
 			}
-		}
+		// }
 
 		return $this->data;
 	}

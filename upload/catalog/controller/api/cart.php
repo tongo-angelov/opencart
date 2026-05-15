@@ -109,6 +109,23 @@ class Cart extends \Opencart\System\Engine\Controller {
 			$subscription_plan_id = 0;
 		}
 
+		if (isset($this->request->post['order_id'])) {
+			$order_id = (int)$this->request->post['order_id'];
+		} else {
+			$order_id = 0;
+		}
+
+		$qtyByProduct = [];
+
+		if($order_id){
+			$this->load->model('checkout/order');
+			$order_products = $this->model_checkout_order->getProducts($order_id);
+			if($order_products)
+			{
+				$qtyByProduct = array_column($order_products, 'quantity', 'product_id');
+			}
+		}
+
 		// Product
 		$this->load->model('catalog/product');
 
@@ -171,6 +188,10 @@ class Cart extends \Opencart\System\Engine\Controller {
 			foreach ($products as $product_2) {
 				if ($product_2['product_id'] == $product_info['product_id']) {
 					$product_total += $product_2['quantity'];
+					if(isset($qtyByProduct[$product_2['product_id']]))
+					{
+						$product_total -= $qtyByProduct[$product_2['product_id']];
+					}
 				}
 			}
 

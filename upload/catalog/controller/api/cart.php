@@ -54,7 +54,7 @@ class Cart extends \Opencart\System\Engine\Controller {
 
 			$product_info = $this->model_catalog_product->getProduct($product_id);
 
-			if (!$product_info){
+			if (!$product_info) {
 				$output['error']['product_' . (int)$key . '_product'] = $this->language->get('error_product');
 			}
 
@@ -115,14 +115,35 @@ class Cart extends \Opencart\System\Engine\Controller {
 			$order_id = 0;
 		}
 
-		$qtyByProduct = [];
+		$orderQuantity = [];
+		$orderOptionQuantity = [];
 
-		if($order_id){
+		// If existing order get products
+		if ($order_id) {
 			$this->load->model('checkout/order');
 			$order_products = $this->model_checkout_order->getProducts($order_id);
-			if($order_products)
-			{
-				$qtyByProduct = array_column($order_products, 'quantity', 'product_id');
+			if ($order_products) {
+				foreach ($order_products as $product) {
+					$product_option = $this->model_checkout_order->getOptions($order_id, $product['order_product_id']);
+
+					$pid = $product['product_id'];
+					$qty = (int)$product['quantity'];
+
+					// get order product quantity
+					if (!isset($orderQuantity[$pid])) {
+						$orderQuantity[$pid] = 0;
+					}
+					$orderQuantity[$pid] += $qty;
+
+					// get order option quantity
+					if (!isset($orderOptionQuantity[$pid])) {
+						$orderOptionQuantity[$pid] = [];
+					}
+					foreach ($product_option as $opt) {
+						$optId = $opt['product_option_value_id'];
+						$orderOptionQuantity[$pid][$optId] = (int)$product['quantity'];
+					}
+				}
 			}
 		}
 
@@ -132,6 +153,25 @@ class Cart extends \Opencart\System\Engine\Controller {
 		$product_info = $this->model_catalog_product->getProduct($product_id);
 
 		if ($product_info) {
+			$products = $this->cart->getProducts();
+
+			$cartOptionQuantity = [];
+
+			// get cart option quantity
+			foreach ($products as $product) {
+				$pid = $product['product_id'];
+
+				if (!isset($cartOptionQuantity[$pid])) {
+					$cartOptionQuantity[$pid] = [];
+				}
+				if (!empty($product['option'])) {
+					foreach ($product['option'] as $opt) {
+						$optId = $opt['product_option_value_id'];
+						$cartOptionQuantity[$pid][$optId] = (int)$product['quantity'];
+					}
+				}
+			}
+
 			// If variant get master product
 			if ($product_info['master_id']) {
 				$product_id = $product_info['master_id'];
@@ -157,9 +197,14 @@ class Cart extends \Opencart\System\Engine\Controller {
 						foreach ($product_option_values as $product_option_value_id) {
 							$product_option_value_info = $this->model_catalog_product->getOptionValue($product_id, $product_option_value_id);
 
+							$cartOptQty = $cartOptionQuantity[$product_id][$product_option_value_id] ?? 0;
+							$orderOptQty = $orderOptionQuantity[$product_id][$product_option_value_id] ?? 0;
+
+							$addedOptQty = $cartOptQty - $orderOptQty;
+
 							if (!$product_option_value_info) {
 								$output['error']['option_' . $product_option_id] = $this->language->get('error_option');
-							} elseif ($product_option_value_info['subtract'] && (!$product_option_value_info['quantity'] || ($product_option_value_info['quantity'] < $quantity))) {
+							} elseif ($product_option_value_info['subtract'] && (!$product_option_value_info['quantity'] || ($product_option_value_info['quantity'] - $addedOptQty < $quantity))) {
 								$output['error']['option_' . $product_option_id] = $this->language->get('error_option_stock');
 							}
 						}
@@ -183,19 +228,18 @@ class Cart extends \Opencart\System\Engine\Controller {
 			// Stock
 			$product_total = 0;
 
-			$products = $this->cart->getProducts();
-
 			foreach ($products as $product_2) {
 				if ($product_2['product_id'] == $product_info['product_id']) {
 					$product_total += $product_2['quantity'];
-					if(isset($qtyByProduct[$product_2['product_id']]))
-					{
-						$product_total -= $qtyByProduct[$product_2['product_id']];
+					if (isset($orderQuantity[$product_2['product_id']])) {
+						$product_total -= $orderQuantity[$product_2['product_id']];
 					}
 				}
 			}
 
-			if (!$this->config->get('config_stock_checkout') && (!$product_info['quantity'] || ($product_info['quantity'] < $product_total))) {
+			// 4.1.0.3 issue where it checks if stock is more only after final check that already goes over
+			// iphone has 11 units > can add x10 twice and error is shown only on 3rd try
+			if (!$this->config->get('config_stock_checkout') && (!$product_info['quantity'] || ($product_info['quantity'] < $product_total + $quantity))) {
 				$output['error']['warning'] = $this->language->get('error_stock');
 			}
 

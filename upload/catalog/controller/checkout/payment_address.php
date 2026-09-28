@@ -26,6 +26,19 @@ class PaymentAddress extends \Opencart\System\Engine\Controller {
 
 		$data['addresses'] = $this->model_account_address->getAddresses($this->customer->getId());
 
+		// Check if user has set default address if none is found in session
+		if (!isset($this->session->data['payment_address']['address_id'])) {
+			$address_id = $this->customer->getAddressId();
+
+			if ($address_id) {
+				$address_info = $this->model_account_address->getAddress($this->customer->getId(), $address_id);
+
+				if ($address_info) {
+					$this->session->data['payment_address'] = $address_info;
+				}
+			}
+		}
+
 		if (isset($this->session->data['payment_address']['address_id'])) {
 			$data['address_id'] = $this->session->data['payment_address']['address_id'];
 		} else {
